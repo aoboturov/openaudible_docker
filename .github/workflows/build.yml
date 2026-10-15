@@ -66,24 +66,44 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build (and push by digest)
+      - name: Build (pull request, local only)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          sbom: false
+          load: true
+          tags: ${{ env.IMAGE }}:pr
+          cache-from: type=gha,scope=${{ steps.prep.outputs.arch }}
+          cache-to: type=gha,mode=max,scope=${{ steps.prep.outputs.arch }}
+
+      - name: Build and push by digest
         id: build
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: ${{ matrix.platform }}
           provenance: true
           sbom: true
-          load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ env.IMAGE }}
-          outputs: ${{ github.event_name != 'pull_request' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) || '' }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ steps.prep.outputs.arch }}
           cache-to: type=gha,mode=max,scope=${{ steps.prep.outputs.arch }}
+
+      - name: Pick image to scan
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if [ -n "$DIGEST" ]; then echo "SCAN_REF=${IMAGE}@${DIGEST}" >> "$GITHUB_ENV"
+          else echo "SCAN_REF=${IMAGE}:pr" >> "$GITHUB_ENV"; fi
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ github.event_name != 'pull_request' && format('{0}@{1}', env.IMAGE, steps.build.outputs.digest) || env.IMAGE }}
+          image-ref: ${{ env.SCAN_REF }}
           format: sarif
           output: trivy-${{ steps.prep.outputs.arch }}.sarif
           severity: CRITICAL,HIGH
@@ -91,7 +111,7 @@ jobs:
 
       - name: Upload scan results
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-${{ steps.prep.outputs.arch }}.sarif
           category: trivy-${{ steps.prep.outputs.arch }}
