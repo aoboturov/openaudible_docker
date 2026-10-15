@@ -70,8 +70,20 @@ RUN chmod 755 /etc/cont-init.d/97-require-password /etc/cont-init.d/98-configure
 
 # Install the pinned OpenAudible release now, so the container never has to
 # download and execute code at start. Fails the build on checksum mismatch.
-RUN mkdir -p "$APP_DIR" && /app/upgrade.sh --no-launch && \
+# HOME is redirected so the installer and wget leave nothing in /config, which
+# would otherwise be owned by the build-time UID instead of PUID at runtime.
+RUN mkdir -p "$APP_DIR" /tmp/build-home && \
+    HOME=/tmp/build-home /app/upgrade.sh --no-launch && \
+    rm -rf /tmp/build-home && \
     chown -R abc:abc "$APP_DIR" && test -x "$APP_DIR/OpenAudible"
+
+# The base image grants user abc passwordless sudo and docker-group membership.
+# A web desktop session is a shell as abc, so that would make every viewer
+# root inside the container. Remove it.
+RUN SUDO_FORCE_REMOVE=yes apt-get purge -y sudo && rm -rf /var/lib/apt/lists/* /etc/sudoers /etc/sudoers.d && \
+    deluser abc sudo && deluser abc docker && \
+    rm -f /config/.wget-hsts && rm -rf /config/.cache && \
+    test -z "$(find /config -mindepth 1 -not -user abc)"
 
 # Desktop session launches our start script.
 RUN echo "/app/start_openaudible.sh" > /defaults/autostart && \

@@ -15,6 +15,8 @@ with secure defaults. What changed and why is in [SECURITY.md](SECURITY.md). In 
   `no-new-privileges` is set.
 - The base image is pinned by digest, and CI rebuilds and scans the image
   weekly for amd64 and arm64.
+- `sudo` is removed. The base image gives the desktop user passwordless root,
+  which turns any web session into root inside the container.
 
 Images: `ghcr.io/aoboturov/openaudible_docker:latest`
 

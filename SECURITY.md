@@ -42,7 +42,29 @@ What we do not defend against:
 | Privilege escalation | Allowed | `no-new-privileges:true` |
 | Resources | Unlimited | `pids_limit`, `mem_limit` |
 | Published image | Manual push, amd64 only, months stale | Weekly CI rebuild, amd64 and arm64, Trivy scan, SBOM and provenance |
+| sudo | Base image gives user `abc` passwordless sudo and docker-group membership, so every web session is root inside the container | `sudo` purged, sudoers removed, `abc` dropped from the `sudo` and `docker` groups |
 | Packages | Includes `vim` | Removed; `thunar` kept for file browsing, `xterm` for the install log |
+
+## What was verified
+
+Build and runtime were tested on 2026-10-15 on an arm64 host (Docker Desktop
+27.3.1, Apple Silicon) with the compose defaults: custom seccomp profile,
+`cap_drop: ALL` plus the six listed capabilities, `no-new-privileges`, pids and
+memory limits.
+
+- Build succeeds; the checksum check runs and the installer completes headless.
+- Without `PASSWORD` the container prints the error and exits.
+- With `PASSWORD`, both 3000 and 3001 return 401 without credentials and 200
+  with them. Port 3001 serves TLS 1.3 with the base image's self-signed cert.
+- Inside the container, PID 1 runs with effective capabilities `0xeb`
+  (the six above), `NoNewPrivs: 1`, `Seccomp: 2`. The OpenAudible Java
+  process runs as the PUID user with no capabilities.
+- The OpenAudible GUI renders, and Controls > Connect to Audible opens the
+  embedded WebKitGTK browser, which loads Amazon's sign-in page. No sandbox
+  or seccomp errors in the log.
+
+Not yet verified: amd64 (the CI build covers it), and the `apps` UID 568
+path on a real TrueNAS host.
 
 ## Deployment checklist
 
