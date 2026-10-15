@@ -1,70 +1,88 @@
-# OpenAudible Docker Compose Configuration
-# Works with any Docker environment (Synology, QNAP, Unraid, standard Linux, etc.)
+# OpenAudible Docker (hardened) - generic Docker Compose file.
 #
-# Quick Start:
-# 1. Copy this file and customize the volumes and environment sections
-# 2. Run: docker-compose up -d
-# 3. Access: http://localhost:3000
+# 1. cp .env.example .env   and set OA_PASSWORD (required) and OA_DATA_DIR
+# 2. docker compose up -d
+# 3. open https://localhost:3001  (self-signed certificate on first use)
 #
-# For platform-specific guides, see:
-#   - Synology NAS: docker-compose.synology.yml and SYNOLOGY.md
-#   - QNAP, Unraid, TrueNAS: See README.md (coming soon)
-
-version: '3.8'
+# Platform guides: TRUENAS.md, SYNOLOGY.md. Hardening rationale: SECURITY.md.
 
 services:
   openaudible:
-    image: openaudible/openaudible:latest
+    image: ghcr.io/aoboturov/openaudible_docker:latest
+    # Or build locally:  docker compose build
+    build: .
     container_name: openaudible
 
     ports:
-      - "3000:3000"
+      # HTTPS web desktop. The base image serves a self-signed cert unless you
+      # drop cert.pem / cert.key into <OA_DATA_DIR-parent>/ssl (see SECURITY.md).
+      - "${OA_HTTPS_PORT:-3001}:3001"
+      # Plain HTTP. Only enable behind a TLS-terminating reverse proxy on a
+      # private network; the VNC password and clipboard travel in clear text.
+      # - "127.0.0.1:3000:3000"
 
     volumes:
-      # REQUIRED: Map this to your desired data location
-      # Examples:
-      #   Linux:    /home/user/openaudible:/config/OpenAudible
-      #   Synology: /volume1/docker/openaudible:/config/OpenAudible
-      #   QNAP:     /share/Container/openaudible:/config/OpenAudible
-      #   Unraid:   /mnt/user/appdata/openaudible:/config/OpenAudible
-      - ./openaudible_data:/config/OpenAudible
+      - ${OA_DATA_DIR:-./openaudible_data}:/config/OpenAudible
+      # Optional: your own TLS certificate and key for port 3001.
+      # - ./ssl:/config/ssl:ro
+      # Optional: import existing audiobooks (read-only).
+      # - /path/to/existing/audiobooks:/import/existing:ro
 
     environment:
-      # User and Group IDs for file permissions
-      # Linux: Run 'id -u' and 'id -g' to find your values
-      # Synology: Typically PUID=1026, PGID=100
-      # Docker Desktop: Not required
-      - PUID=1000
-      - PGID=1000
+      # REQUIRED. The container refuses to start without it unless
+      # OA_ALLOW_NO_PASSWORD=true is set on purpose.
+      - PASSWORD=${OA_PASSWORD:?Set OA_PASSWORD in .env}
+      # Alternative: read the password from a Docker secret file.
+      # - FILE__PASSWORD=/run/secrets/openaudible_password
 
-      # Used to make internal web browser more compatible:
-      - DWEBKIT_DISABLE_DMABUF_RENDERER=1
-      - DWEBKIT_DISABLE_COMPOSITING_MODE=1
-      - DWEBKIT_FORCE_SOFTWARE_RENDERING=1
-      - DGDK_GL=disable
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
 
-      # Optional: Timezone
-      - TZ=UTC
-      
-      # Optional: Password for web interface (leave empty for no password)
-      # - PASSWORD=
-
-      # Optional: Use beta versions (true) or stable releases (false)
+      # OpenAudible version policy. The image ships a pinned, checksum-verified
+      # build. Leave OA_AUTO_UPGRADE unset to keep it. To re-pin at runtime:
+      #   - OA_AUTO_UPGRADE=true
+      #   - OA_VERSION=5.0.1
+      #   - OA_SHA256_X86_64=<sha256>   (and/or OA_SHA256_AARCH64)
+      # Unverified "latest"/beta downloads need OA_ALLOW_UNVERIFIED=true.
       - OA_BETA=false
 
-      # Pre-configured settings (generally don't need changes)
+      # Internal WebKit browser compatibility (software rendering).
+      - WEBKIT_DISABLE_DMABUF_RENDERER=1
+      - WEBKIT_DISABLE_COMPOSITING_MODE=1
+      - WEBKIT_FORCE_SOFTWARE_RENDERING=1
+      - GDK_GL=disable
+
       - KASM_AUDIO_ENABLED=1
       - OA_KIOSK=true
       - oa_internal_browser=true
 
-    # Required for auto-start functionality
+    # Least privilege. The linuxserver init needs these to create user abc and
+    # chown /config; nothing else is required.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+      - KILL
     security_opt:
-      - seccomp:unconfined
+      - no-new-privileges:true
+      # Docker's default profile plus unprivileged user namespaces, which
+      # WebKitGTK's sandbox needs. If OpenAudible does not auto-start, try the
+      # ladder in SECURITY.md before falling back to seccomp:unconfined.
+      - seccomp:./seccomp/openaudible.json
 
+    pids_limit: 2048
+    mem_limit: 4g
     restart: unless-stopped
 
-# Notes:
-# - First launch takes 1-2 minutes while OpenAudible is downloaded and installed
-# - Data persists in the volume mount and survives container restarts
-# - To upgrade: docker-compose pull && docker-compose up -d
-# - Your audiobooks will be in: <volume-path>/books/, <volume-path>/m4b/, etc.
+    # Example Docker secret for the password (uncomment FILE__PASSWORD above):
+    # secrets:
+    #   - openaudible_password
+
+# secrets:
+#   openaudible_password:
+#     file: ./openaudible_password.txt

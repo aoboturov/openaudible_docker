@@ -7,7 +7,7 @@
 # 1. Edit the volumes and environment sections below to match your setup
 # 2. Pre-create directory: sudo mkdir -p /volume1/Audiobooks && sudo chown 1026:100 /volume1/Audiobooks
 # 3. Deploy via Container Manager > Project > Create > Upload this file
-# 4. Access: http://YOUR-NAS-IP:3000
+# 4. Access: https://YOUR-NAS-IP:3001
 #
 # Full guide: See SYNOLOGY.md for detailed instructions
 #
@@ -15,18 +15,16 @@
 #   SSH into your NAS and run: id
 #   First admin user is typically: PUID=1026, PGID=100
 
-version: '3.8'
-
 services:
   openaudible:
-    image: openaudible/openaudible:latest
+    image: ghcr.io/aoboturov/openaudible_docker:latest
     container_name: openaudible
 
     # Network and ports
     ports:
-      - "3000:3000"    # Web interface port
-                       # Access via: http://YOUR-NAS-IP:3000
-                       # Change to "3001:3000" if port 3000 is already in use
+      - "3001:3001"    # HTTPS web interface
+                       # Access via: https://YOUR-NAS-IP:3001 (self-signed cert)
+                       # Plain HTTP on 3000 is intentionally not exposed; see SECURITY.md
 
     # Volume mappings - CUSTOMIZE THESE PATHS FOR YOUR SYNOLOGY
     volumes:
@@ -64,14 +62,15 @@ services:
       - PGID=100
 
       # Used to make the OpenAudible internal web browser more compatible:
-      - DWEBKIT_DISABLE_DMABUF_RENDERER=1
-      - DWEBKIT_DISABLE_COMPOSITING_MODE=1
-      - DWEBKIT_FORCE_SOFTWARE_RENDERING=1
-      - DGDK_GL=disable
+      - WEBKIT_DISABLE_DMABUF_RENDERER=1
+      - WEBKIT_DISABLE_COMPOSITING_MODE=1
+      - WEBKIT_FORCE_SOFTWARE_RENDERING=1
+      - GDK_GL=disable
 
 
-      # Optional: Password for web interface (leave empty for no password)
-      # - PASSWORD=
+      # REQUIRED: Password for the web interface (user name is "abc").
+      # The container refuses to start without one. Use a long random value.
+      - PASSWORD=CHANGE-ME
 
       # Optional: Use beta versions (true) or stable releases (false)
       - OA_BETA=false
@@ -87,11 +86,24 @@ services:
       - OA_KIOSK=true              # Disable quit menu (recommended for Docker)
       - oa_internal_browser=true   # Use internal browser for Audible login
 
-    # CRITICAL: Security options required for OpenAudible to auto-start
-    # This is required on Synology for the application to start automatically
-    # Without this, you'll need to manually start OpenAudible inside the container
+    # Least privilege (see SECURITY.md). Copy seccomp/openaudible.json from the
+    # repo to /volume1/docker/openaudible-seccomp.json first. If OpenAudible
+    # does not auto-start, work through the seccomp ladder in SECURITY.md
+    # before falling back to "seccomp:unconfined".
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+      - KILL
     security_opt:
-      - seccomp:unconfined
+      - no-new-privileges:true
+      - seccomp:/volume1/docker/openaudible-seccomp.json
+    pids_limit: 2048
+    mem_limit: 4g
 
     # Restart policy
     # unless-stopped = Auto-restart on NAS reboot or container failure
@@ -156,7 +168,7 @@ services:
 
 # TROUBLESHOOTING
 # ===============
-# Port 3000 not accessible:
+# Port 3001 not accessible:
 #   - Check Synology firewall (Control Panel > Security > Firewall)
 #   - Verify container is running (Container Manager)
 #   - Check logs (Container Manager > Container > Log tab)
@@ -167,7 +179,7 @@ services:
 #   - Fix: sudo chown -R 1026:100 /volume1/Audiobooks
 #
 # OpenAudible doesn't auto-start:
-#   - Ensure security_opt: seccomp:unconfined is present
+#   - Work through the seccomp ladder in SECURITY.md
 #   - Check container logs for errors
 #
 # Can't access network share:

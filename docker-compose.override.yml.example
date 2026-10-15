@@ -10,8 +10,6 @@
 #
 # Note: docker-compose.override.yml is git-ignored for your local settings
 
-version: '3.8'
-
 services:
   openaudible:
     # Override volume paths for your local environment
@@ -24,12 +22,12 @@ services:
     #   - PUID=1001
     #   - PGID=1001
     #   - TZ=Europe/London
-    #   - PASSWORD=my-secure-password
+    #   - PASSWORD=my-secure-password   # or FILE__PASSWORD=/run/secrets/openaudible_password
     #   - OA_BETA=false
 
     # Override port mapping
     # ports:
-    #   - "3001:3000"
+    #   - "8443:3001"
 
     # Add resource limits
     # deploy:

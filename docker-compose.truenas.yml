@@ -1,0 +1,57 @@
+# OpenAudible Docker (hardened) for TrueNAS SCALE 24.10+ (Docker-based apps).
+#
+# Paste this into Apps > Discover Apps > (three dots) > Install via YAML.
+# The guided "Install Custom App" wizard has no seccomp field, so use YAML.
+#
+# Before installing:
+#   1. Create a dataset, e.g. tank/apps/openaudible, with the "Apps" preset
+#      (owned by apps:apps = 568:568), or chown it to the UID/GID used below.
+#   2. Copy seccomp/openaudible.json from this repo to the dataset, e.g.
+#      /mnt/tank/apps/openaudible/seccomp.json
+#   3. Replace CHANGE-ME below with a long password.
+#
+# Full guide: TRUENAS.md
+
+services:
+  openaudible:
+    image: ghcr.io/aoboturov/openaudible_docker:latest
+    container_name: openaudible
+
+    ports:
+      - "3001:3001"        # HTTPS web desktop -> https://YOUR-NAS-IP:3001
+
+    volumes:
+      - /mnt/tank/apps/openaudible/data:/config/OpenAudible
+      # Optional: your own certificate (cert.pem + cert.key) for port 3001.
+      # - /mnt/tank/apps/openaudible/ssl:/config/ssl:ro
+
+    environment:
+      - PASSWORD=CHANGE-ME
+      - PUID=568
+      - PGID=568
+      - TZ=UTC
+      - OA_BETA=false
+      - WEBKIT_DISABLE_DMABUF_RENDERER=1
+      - WEBKIT_DISABLE_COMPOSITING_MODE=1
+      - WEBKIT_FORCE_SOFTWARE_RENDERING=1
+      - GDK_GL=disable
+      - KASM_AUDIO_ENABLED=1
+      - OA_KIOSK=true
+      - oa_internal_browser=true
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+      - KILL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:/mnt/tank/apps/openaudible/seccomp.json
+
+    pids_limit: 2048
+    mem_limit: 4g
+    restart: unless-stopped
