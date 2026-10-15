@@ -102,16 +102,39 @@ jobs:
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          # Lets Trivy pull the (possibly private) image it just pushed.
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          # The pushed digest is a per-arch index; scan this runner's platform.
+          TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
           image-ref: ${{ env.SCAN_REF }}
           format: sarif
           output: trivy-${{ steps.prep.outputs.arch }}.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Vulnerability summary (log)
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          # The pushed digest is a per-arch index; scan this runner's platform.
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+        with:
+          image-ref: ${{ env.SCAN_REF }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+          skip-setup-trivy: true
 
       - name: Upload scan results
         if: always()
         uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true  # needs code scanning; unavailable on private repos
         with:
           sarif_file: trivy-${{ steps.prep.outputs.arch }}.sarif
           category: trivy-${{ steps.prep.outputs.arch }}
