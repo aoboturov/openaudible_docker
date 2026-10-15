@@ -81,7 +81,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ steps.prep.outputs.arch }}
 
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ github.event_name != 'pull_request' && format('{0}@{1}', env.IMAGE, steps.build.outputs.digest) || env.IMAGE }}
           format: sarif
